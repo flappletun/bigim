@@ -41,7 +41,7 @@ func OpenDir(root string) ([]image.Image, []string) {
 	ims := make([]image.Image, 0, 1000)
 	nms := make([]string, 0, 1000)
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if !isImage(path) {return nil}
+		if !IsImage(path) {return nil}
 		base := filepath.Base(path)
 		nms = append(nms, strings.TrimSuffix(base, filepath.Ext(base)))
 		ims = append(ims, Open(path))
@@ -166,7 +166,7 @@ func NameFromPath(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 }
 
-func isImage(path string) bool {
+func IsImage(path string) bool {
 	if ext := filepath.Ext(path); ext == ".png" ||
 		ext == ".jpg" || ext == ".jpeg" {
 		return true

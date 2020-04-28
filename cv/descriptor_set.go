@@ -1,12 +1,12 @@
 package cv
 
 import (
-	"image"
 	"bigim/conv"
 	"bigim/edit"
+	"bigim/u16math"
+	"image"
 	"math"
 	"sort"
-	"bigim/u16math"
 )
 
 type DescriptorSet struct {
@@ -27,6 +27,13 @@ type Descriptor struct {
 	pxMags []float64
 }
 
+type Match struct {
+	a,
+	b Descriptor
+	dist,
+	angle float64
+}
+
 func NewDescriptorSet(n interface{}) *DescriptorSet {
 	d :=  &DescriptorSet{
 		gImg: conv.ToG16(n),
@@ -36,11 +43,8 @@ func NewDescriptorSet(n interface{}) *DescriptorSet {
 
 	//find interest points from DoG extrema
 	d.convertPoints()
-	//fmt.Println(len(d.Desc), "extrema received from DoG")
 	d.eliminateLowContrastPoints()
-	//fmt.Println(len(d.Desc), "points passed contrast test")
 	d.eliminateEdgePoints()
-	//fmt.Println(len(d.Desc), "points passed edge response test 1")
 
 	//assign theta and magnitude to each desc
 	d.buildOrientVector()
@@ -52,11 +56,61 @@ func NewDescriptorSet(n interface{}) *DescriptorSet {
 	//eliminate crowded points
 	d.unCrowd()
 
-	//fmt.Println(len(d.Desc), "points passed edge response test 2")
-	//fmt.Println(len(d.Desc), "descriptors created")
-	//fmt.Println()
-
 	return d
+}
+
+func (d DescriptorSet) DescInfo(idx int) DescInfo {
+	return DescInfo{
+		desc:    &(d.Desc[idx]),
+		imgPxLg: d.imageArea(d.Desc[idx].Point, 25),
+		imgPxSm: d.imageArea(d.Desc[idx].Point, 5),
+		dogPx:   d.dogAreas(d.Desc[idx].Point),
+	}
+}
+
+func (d DescriptorSet) DescInfoAll() []DescInfo {
+	out := make([]DescInfo, len(d.Desc))
+	for i := range d.Desc {
+		out[i] = d.DescInfo(i)
+	}
+	return out
+}
+
+func (d DescriptorSet) DescInfoRange(idc []int) []DescInfo {
+	out := make([]DescInfo, len(idc))
+	for i, v := range idc {
+		out[i] = d.DescInfo(v)
+	}
+	return out
+}
+
+func (d DescriptorSet) ShowKeypoints(nExt int) image.Image {
+	if nExt <= 0 {
+		nExt = len(d.Desc)
+	}
+	plot := edit.NewIllustrator(copyR64(d.cImg))
+	for _, p := range d.Desc[:nExt] {
+		plot.DrawCircle(p.Point.X, p.Point.Y, 5, edit.Red())
+	}
+	return plot.ToImage()
+}
+
+func (d DescriptorSet) FindMatches(b DescriptorSet) []Match {
+	matches := make([]Match, 0, len(d.Desc))
+	for _, v := range d.Desc {
+		for _, w := range b.Desc {
+			if w.Theta[0] == v.Theta[0] {
+				if dist := d.distDesc(w.Histogram, v.Histogram); dist < 0.01 {
+					matches = append(matches, Match{
+						a:    v,
+						b:    w,
+						dist: dist,
+					})
+				}
+			}
+		}
+	}
+	return matches
 }
 
 func (d *DescriptorSet) unCrowd() {
@@ -271,38 +325,11 @@ func (d DescriptorSet) dogAreas(pt Point) []*image.Gray16 {
 	return outs
 }
 
-func (d DescriptorSet) DescInfo(idx int) DescInfo {
-	return DescInfo{
-		desc:    &(d.Desc[idx]),
-		imgPxLg: d.imageArea(d.Desc[idx].Point, 25),
-		imgPxSm: d.imageArea(d.Desc[idx].Point, 5),
-		dogPx:   d.dogAreas(d.Desc[idx].Point),
+func (d DescriptorSet) distDesc(a, b []float64) float64 {
+	sum := 0.0
+	for i := range a {
+		sum += math.Pow(a[i] - b[i], 2)
 	}
+	return math.Sqrt(sum)
 }
 
-func (d DescriptorSet) DescInfoAll() []DescInfo {
-	out := make([]DescInfo, len(d.Desc))
-	for i := range d.Desc {
-		out[i] = d.DescInfo(i)
-	}
-	return out
-}
-
-func (d DescriptorSet) DescInfoRange(idc []int) []DescInfo {
-	out := make([]DescInfo, len(idc))
-	for i, v := range idc {
-		out[i] = d.DescInfo(v)
-	}
-	return out
-}
-
-func (d DescriptorSet) ShowKeypoints(nExt int) image.Image {
-	if nExt <= 0 {
-		nExt = len(d.Desc)
-	}
-	plot := edit.NewIllustrator(copyR64(d.cImg))
-	for _, p := range d.Desc[:nExt] {
-		plot.DrawCircle(p.Point.X, p.Point.Y, 5, edit.Red())
-	}
-	return plot.ToImage()
-}
